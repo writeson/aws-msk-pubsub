@@ -1,0 +1,186 @@
+# requirements.txt
+kafka-python==2.0.2
+boto3==1.34.0
+botocore==1.34.0
+
+---
+# k8s-deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: msk-config
+  namespace: default
+data:
+  MSK_CLUSTER_NAME: "eks-pubsub-cluster"
+  AWS_REGION: "us-east-1"
+  CONSUMER_GROUP_ID: "eks-app-group"
+  KAFKA_TOPICS: "user-events,system-alerts,notifications"
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: msk-service-account
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/EKSMSKRole"  # Replace with actual role ARN
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msk-pubsub-app
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: msk-pubsub-app
+  template:
+    metadata:
+      labels:
+        app: msk-pubsub-app
+    spec:
+      serviceAccountName: msk-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: msk-app
+        image: your-registry/msk-pubsub-app:latest  # Replace with your image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: msk-config
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: msk-config
+              key: AWS_REGION
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msk-pubsub-service
+  namespace: default
+spec:
+  selector:
+    app: msk-pubsub-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+---
+# Optional: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: msk-pubsub-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: msk-pubsub-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Optional: NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: msk-pubsub-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: msk-pubsub-app
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS for AWS APIs
+    - protocol: TCP
+      port: 9092  # Kafka plaintext
+    - protocol: TCP
+      port: 9094  # Kafka TLS
+    - protocol: TCP
+      port: 9096  # Kafka SASL_SSL
+    - protocol: UDP
+      port: 53   # DNS
