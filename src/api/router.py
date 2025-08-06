@@ -2,6 +2,7 @@
 Router module for MSK Pub/Sub API endpoints.
 """
 
+import time
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -9,6 +10,8 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from src.helpers.config import settings
+from src.helpers import broker
 from src.api.models import (
     HealthResponse, 
     ReadinessResponse,
@@ -22,6 +25,10 @@ from src.api.models import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Global variable to track start time
+start_time = time.time()
+
+
 # Create router
 router = APIRouter()
 
@@ -29,10 +36,9 @@ router = APIRouter()
 @router.get('/health', response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    from src.main import broker
-    
+
     # Check if broker is connected
-    broker_connected = broker.is_connected if hasattr(broker, 'is_connected') else True
+    broker_connected = broker.broker.is_connected if hasattr(broker.broker, 'is_connected') else True
     
     status = {
         'status': 'healthy',
@@ -46,10 +52,9 @@ async def health_check():
 @router.get('/ready', response_model=ReadinessResponse)
 async def readiness_check():
     """Readiness check endpoint."""
-    from src.main import broker
-    
+
     # Check if broker is connected
-    broker_connected = broker.is_connected if hasattr(broker, 'is_connected') else True
+    broker_connected = broker.broker.is_connected if hasattr(broker.broker, 'is_connected') else True
     
     if broker_connected:
         return {'status': 'ready'}
@@ -62,8 +67,7 @@ async def readiness_check():
 @router.post('/publish', response_model=PublishResponse)
 async def publish_message(message_data: MessageData):
     """Publish a message to a Kafka topic."""
-    from src.main import publish_message_to_kafka
-    
+
     try:
         topic = message_data.topic
         message = message_data.message
@@ -74,7 +78,7 @@ async def publish_message(message_data: MessageData):
 
         # Publish message using faststream
         timestamp = datetime.utcnow().isoformat()
-        success = await publish_message_to_kafka(
+        success = await broker.publish_message_to_kafka(
             topic=topic,
             message=message,
             key=key
@@ -99,15 +103,12 @@ async def get_messages(
     limit: int = Query(50, description="Maximum number of messages to return"),
     topic: Optional[str] = Query(None, description="Filter messages by topic")
 ):
-    """Get recent messages from the buffer."""
-    from src.main import message_buffer
-    
     try:
-        filtered_messages = message_buffer
+        filtered_messages = broker.message_buffer
 
         if topic:
             filtered_messages = [
-                msg for msg in message_buffer
+                msg for msg in broker.message_buffer
                 if msg['topic'] == topic
             ]
 
@@ -127,29 +128,26 @@ async def get_messages(
 @router.get('/topics', response_model=TopicsResponse)
 async def get_topics():
     """Get information about subscribed topics."""
-    from src.main import TOPICS, CLUSTER_NAME, GROUP_ID
-    
+
     return {
-        'subscribed_topics': TOPICS,
-        'cluster_name': CLUSTER_NAME,
-        'consumer_group': GROUP_ID
+        'subscribed_topics': settings.TOPICS,
+        'cluster_name': settings.CLUSTER_NAME,
+        'consumer_group': settings.GROUP_ID
     }
 
 @router.get('/metrics', response_model=MetricsResponse)
 async def get_metrics():
     """Get basic application metrics."""
-    from src.main import message_buffer, max_buffer_size, start_time
-    import time
-    
+
     try:
         topic_counts = {}
-        for msg in message_buffer:
+        for msg in broker.message_buffer:
             topic = msg['topic']
             topic_counts[topic] = topic_counts.get(topic, 0) + 1
 
         metrics = {
-            'buffer_size': len(message_buffer),
-            'max_buffer_size': max_buffer_size,
+            'buffer_size': len(broker.message_buffer),
+            'max_buffer_size': broker.max_buffer_size,
             'messages_by_topic': topic_counts,
             'uptime_seconds': time.time() - start_time
         }

@@ -23,10 +23,6 @@ from kafka.errors import KafkaError
 # Note: Main logging configuration is in main.py
 logger = logging.getLogger(__name__)
 
-# Set DEBUG level for kafka loggers to help with troubleshooting
-# logging.getLogger('kafka').setLevel(logging.DEBUG)
-# logging.getLogger('kafka.conn').setLevel(logging.WARNING)  # Set to WARNING in main.py
-
 
 class MSKClient:
     """
@@ -318,67 +314,3 @@ def example_message_handler(message):
         f"partition {message.partition} "
         f"offset {message.offset}: {message.value}"
     )
-
-
-def main():
-    """
-    Example usage of MSK pub/sub client.
-    Set environment variables or modify these values:
-    """
-
-    # Configuration - get from environment or K8s secrets
-    CLUSTER_NAME = os.getenv('MSK_CLUSTER_NAME', 'eks-pubsub-cluster')
-    REGION = os.getenv('AWS_REGION', 'us-east-1')
-    GROUP_ID = os.getenv('CONSUMER_GROUP_ID', 'eks-app-group')
-    TOPICS = os.getenv('KAFKA_TOPICS', 'user-events,system-alerts').split(',')
-
-    # Initialize MSK client
-    msk_client = MSKClient(
-        cluster_name=CLUSTER_NAME,
-        region=REGION,
-        security_protocol="SSL"
-    )
-
-    # Example 1: Producer usage
-    producer = MSKProducer(msk_client)
-
-    # Publish some example messages
-    for i in range(5):
-        message = {
-            'event_type': 'user_action',
-            'user_id': f'user_{i}',
-            'action': 'page_view',
-            'metadata': {'page': '/dashboard', 'session_id': f'session_{i}'}
-        }
-
-        producer.publish(
-            topic='user-events',
-            message=message,
-            key=f'user_{i}'
-        )
-        time.sleep(1)
-
-    # Example 2: Consumer usage
-    consumer = MSKConsumer(
-        msk_client=msk_client,
-        group_id=GROUP_ID,
-        topics=TOPICS,
-        auto_offset_reset='earliest'
-    )
-
-    # Handle shutdown gracefully
-    def signal_handler(signum, frame):
-        logger.info("Received shutdown signal")
-        consumer.stop()
-        producer.close()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # Start consuming (this will block)
-    consumer.consume(example_message_handler)
-
-
-if __name__ == "__main__":
-    main()
