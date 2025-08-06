@@ -8,8 +8,12 @@ dependencies = [
     "kafka-python-ng==2.2.3",
     "boto3==1.34.0",
     "botocore==1.34.0",
-    "flask==3.0.0",
+    "fastapi==0.116.1",
+    "pydantic>=2.7.0",
+    "pydantic-core>=2.17.0",
+    "uvicorn==0.27.1",
     "requests==2.31.0",
     "aws-cdk-lib==2.206.0",
     "constructs>=10.0.0,<11.0.0",
+    "faststream[kafka]>=0.5.48",
 ]

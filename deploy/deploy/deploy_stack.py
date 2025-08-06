@@ -170,6 +170,9 @@ compression.type=snappy
                     )
                 ),
             ),
+            client_authentication=msk.CfnCluster.ClientAuthenticationProperty(
+                unauthenticated=msk.CfnCluster.UnauthenticatedProperty(enabled=True)
+            ),
             configuration_info=msk.CfnCluster.ConfigurationInfoProperty(
                 arn=cluster_config.attr_arn,
                 revision=1,

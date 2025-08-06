@@ -20,11 +20,12 @@ from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Note: Main logging configuration is in main.py
 logger = logging.getLogger(__name__)
+
+# Set DEBUG level for kafka loggers to help with troubleshooting
+# logging.getLogger('kafka').setLevel(logging.DEBUG)
+# logging.getLogger('kafka.conn').setLevel(logging.WARNING)  # Set to WARNING in main.py
 
 
 class MSKClient:
@@ -35,6 +36,7 @@ class MSKClient:
     def __init__(
             self,
             cluster_name: str,
+            bootstrap_servers: Optional[str] = None,
             region: str = "us-east-1",
             security_protocol: str = "SSL",
             client_id: Optional[str] = None
@@ -47,8 +49,14 @@ class MSKClient:
         self._running = True
 
         # Initialize MSK client
-        self.msk_client = boto3.client('kafka', region_name=region)
-        self._get_bootstrap_servers()
+        if bootstrap_servers:
+            self.bootstrap_servers = bootstrap_servers
+            logger.info(f"Using provided bootstrap servers: {self.bootstrap_servers}")
+        else:
+            self.bootstrap_servers = None
+            # Initialize MSK client only if we need to discover brokers
+            self.msk_client = boto3.client('kafka', region_name=region)
+            self._get_bootstrap_servers()
 
     def _get_bootstrap_servers(self) -> None:
         """Get bootstrap servers from MSK cluster."""
@@ -92,17 +100,24 @@ class MSKProducer:
         self._connect()
 
     def _connect(self):
-        """Initialize Kafka producer."""
+        """Initialize Kafka producer with retry logic."""
         producer_config = {
             'bootstrap_servers': self.msk_client.bootstrap_servers,
             'client_id': f"{self.msk_client.client_id}-producer",
             'value_serializer': lambda v: json.dumps(v).encode('utf-8'),
             'key_serializer': lambda k: k.encode('utf-8') if k else None,
             'acks': 'all',  # Wait for all replicas
-            'retries': 3,
-            'retry_backoff_ms': 1000,
-            'request_timeout_ms': 30000,
-            'compression_type': 'snappy',
+            'retries': 5,  # Increased retries
+            'retry_backoff_ms': 2000,  # Increased backoff
+            'request_timeout_ms': 60000,  # Increased timeout
+            'connections_max_idle_ms': 180000,  # Keep connections alive longer
+            'reconnect_backoff_ms': 2000,  # Increased reconnect backoff
+            'reconnect_backoff_max_ms': 10000,  # Max reconnect backoff
+            'compression_type': None,  # No compression for local development
+            'api_version_auto_timeout_ms': 60000,  # Increased API version discovery timeout
+            # Removed unsupported parameters:
+            # 'socket_connection_setup_timeout_ms': 60000
+            # 'socket_timeout_ms': 60000
         }
 
         if self.msk_client.security_protocol == "SSL":
@@ -112,12 +127,25 @@ class MSKProducer:
                 'ssl_cafile': None,  # Use system CA bundle
             })
 
-        try:
-            self.producer = KafkaProducer(**producer_config)
-            logger.info("Kafka producer connected successfully")
-        except Exception as e:
-            logger.error(f"Failed to connect producer: {e}")
-            raise
+        # Add retry logic for producer connection
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to connect producer (attempt {attempt+1}/{max_retries})")
+                self.producer = KafkaProducer(**producer_config)
+                logger.info("Kafka producer connected successfully")
+                return
+            except Exception as e:
+                logger.warning(f"Producer connection attempt {attempt+1} failed: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to connect producer after {max_retries} attempts: {e}")
+                    raise
 
     def publish(
             self,
@@ -195,7 +223,7 @@ class MSKConsumer:
         self._connect()
 
     def _connect(self):
-        """Initialize Kafka consumer."""
+        """Initialize Kafka consumer with retry logic."""
         consumer_config = {
             'bootstrap_servers': self.msk_client.bootstrap_servers,
             'client_id': f"{self.msk_client.client_id}-consumer",
@@ -203,11 +231,19 @@ class MSKConsumer:
             'auto_offset_reset': self.auto_offset_reset,
             'enable_auto_commit': True,
             'auto_commit_interval_ms': 1000,
-            'session_timeout_ms': 30000,
-            'heartbeat_interval_ms': 3000,
+            'session_timeout_ms': 30000,  # Reduced timeout for local development
+            'heartbeat_interval_ms': 3000,  # Reduced heartbeat for local development
             'max_poll_records': 100,
             'value_deserializer': lambda m: json.loads(m.decode('utf-8')),
             'key_deserializer': lambda m: m.decode('utf-8') if m else None,
+            'request_timeout_ms': 60000,  # Increased timeout
+            'connections_max_idle_ms': 180000,  # Keep connections alive longer
+            'reconnect_backoff_ms': 2000,  # Increased reconnect backoff
+            'reconnect_backoff_max_ms': 10000,  # Max reconnect backoff
+            'api_version_auto_timeout_ms': 60000,  # Increased API version discovery timeout
+            # Removed unsupported parameters:
+            # 'socket_connection_setup_timeout_ms': 60000
+            # 'socket_timeout_ms': 60000
         }
 
         if self.msk_client.security_protocol == "SSL":
@@ -217,13 +253,26 @@ class MSKConsumer:
                 'ssl_cafile': None,  # Use system CA bundle
             })
 
-        try:
-            self.consumer = KafkaConsumer(**consumer_config)
-            self.consumer.subscribe(self.topics)
-            logger.info(f"Kafka consumer connected and subscribed to {self.topics}")
-        except Exception as e:
-            logger.error(f"Failed to connect consumer: {e}")
-            raise
+        # Add retry logic for consumer connection
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to connect consumer (attempt {attempt+1}/{max_retries})")
+                self.consumer = KafkaConsumer(**consumer_config)
+                self.consumer.subscribe(self.topics)
+                logger.info(f"Kafka consumer connected and subscribed to {self.topics}")
+                return
+            except Exception as e:
+                logger.warning(f"Consumer connection attempt {attempt+1} failed: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to connect consumer after {max_retries} attempts: {e}")
+                    raise
 
     def consume(self, message_handler: callable, timeout_ms: int = 1000):
         """
