@@ -11,17 +11,41 @@ This project is a FastAPI application demonstrating AWS MSK (Managed Streaming f
   - `helpers/`: Helper modules
     - `msk.py`: AWS MSK client for pub/sub operations
   - `main.py`: Application entry point
-- `deploy/`: Deployment-related code
+- `deploy/`: Deployment-related code[guidelines.md](../../../rh/air-bridge/.junie/guidelines.md)
   - AWS CDK deployment stack
 - `something/`: Miscellaneous scripts and configuration
 
-## Coding Standards
-
 ### Python Style Guidelines
-- Follow PEP 8 style guidelines
-- Use type hints for function parameters and return values
-- Document classes and functions with docstrings
-- Use meaningful variable and function names
+The project uses ruff for linting with the following configuration:
+
+- **Line Length**: 100 characters
+- **Docstring Style**: Restructured Text style
+- **Enabled Rules**: 
+  - E, W: pycodestyle errors and warnings
+  - F: Pyflakes (undefined names)
+  - I: isort (import sorting)
+  - N: pep8-naming (naming conventions)
+  - D: pydocstyle (docstring style)
+  - UP: pyupgrade (modern syntax)
+  - C90: mccabe (complexity)
+  - B: bugbear (security and performance)
+  - SIM: simplify (reducing unnecessary code)
+
+- **Maximum Complexity**: 10 for functions
+
+### Code Style Docstring Example
+
+```python
+def example_function(param1: int, param2: str) -> bool:
+    """
+    This is an example function that demonstrates proper docstring style.
+
+    :param param1: An integer parameter.
+    :param param2: A string parameter.
+    :return: A boolean indicating success or failure.
+    """
+    return True
+```
 
 ### API Development
 - Use Pydantic models for request/response validation

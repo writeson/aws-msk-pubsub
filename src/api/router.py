@@ -35,7 +35,11 @@ router = APIRouter()
 # Define routes
 @router.get('/health', response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
+    """
+    Health check endpoint.
+
+    :return: Health status including broker connectivity and current timestamp.
+    """
 
     # Check if broker is connected
     broker_connected = broker.broker.is_connected if hasattr(broker.broker, 'is_connected') else True
@@ -51,7 +55,11 @@ async def health_check():
 
 @router.get('/ready', response_model=ReadinessResponse)
 async def readiness_check():
-    """Readiness check endpoint."""
+    """
+    Readiness check endpoint.
+
+    :return: Readiness status JSON indicating whether dependencies are ready.
+    """
 
     # Check if broker is connected
     broker_connected = broker.broker.is_connected if hasattr(broker.broker, 'is_connected') else True
@@ -66,7 +74,13 @@ async def readiness_check():
 
 @router.post('/publish', response_model=PublishResponse)
 async def publish_message(message_data: MessageData):
-    """Publish a message to a Kafka topic."""
+    """
+    Publish a message to a Kafka topic.
+
+    :param message_data: Request body containing topic, message, and optional key.
+    :return: Publish result including status, topic, key, and timestamp.
+    :raises HTTPException: If validation fails or publishing the message fails.
+    """
 
     try:
         topic = message_data.topic
@@ -76,7 +90,7 @@ async def publish_message(message_data: MessageData):
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
 
-        # Publish message using faststream
+        # Publish a message using faststream
         timestamp = datetime.utcnow().isoformat()
         success = await broker.publish_message_to_kafka(
             topic=topic,
@@ -103,6 +117,13 @@ async def get_messages(
     limit: int = Query(50, description="Maximum number of messages to return"),
     topic: Optional[str] = Query(None, description="Filter messages by topic")
 ):
+    """
+    Retrieve messages from the in-memory buffer.
+
+    :param limit: Maximum number of messages to return.
+    :param topic: Optional topic to filter messages by.
+    :return: Messages along with total_count and returned_count.
+    """
     try:
         filtered_messages = broker.message_buffer
 
@@ -127,7 +148,11 @@ async def get_messages(
 
 @router.get('/topics', response_model=TopicsResponse)
 async def get_topics():
-    """Get information about subscribed topics."""
+    """
+    Get information about subscribed topics.
+
+    :return: Subscribed topics, cluster name, and consumer group.
+    """
 
     return {
         'subscribed_topics': settings.TOPICS,
@@ -137,7 +162,11 @@ async def get_topics():
 
 @router.get('/metrics', response_model=MetricsResponse)
 async def get_metrics():
-    """Get basic application metrics."""
+    """
+    Get basic application metrics.
+
+    :return: Metrics including buffer size, max size, messages by topic, and uptime in seconds.
+    """
 
     try:
         topic_counts = {}

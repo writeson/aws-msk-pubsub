@@ -25,7 +25,9 @@ broker = KafkaBroker(
 # Periodic task for system alerts
 async def system_alerts_task():
     """
-    Periodic task that runs every 10 seconds and publishes a message to the "system-alerts" topic.
+    Periodic task that publishes a system alert every 10 seconds.
+
+    :return: None. Runs indefinitely until cancelled by the application.
     """
     while True:
         try:
@@ -62,13 +64,13 @@ async def publish_message_to_kafka(topic: str, message: Dict[str, Any],
     """
     Publish a message to a Kafka topic.
 
-    Args:
-        topic: Kafka topic name
-        message: Message data
-        key: Optional message key for partitioning
+    * NOTE * The real work here is the broker.publish() method. The rest is useful to this
+    application.
 
-    Returns:
-        True if message was sent successfully
+    :param topic: Kafka topic name.
+    :param message: Message data to send.
+    :param key: Optional message key for partitioning.
+    :return: True if the message was sent successfully; otherwise False.
     """
     try:
         # Add metadata to message
@@ -81,7 +83,7 @@ async def publish_message_to_kafka(topic: str, message: Dict[str, Any],
         # Convert key to bytes if it's a string
         key_bytes = key.encode('utf-8') if key is not None else None
 
-        # Publish message using faststream
+        # Publish a message using faststream
         await broker.publish(
             message=enriched_message,
             topic=topic,
@@ -98,7 +100,17 @@ async def publish_message_to_kafka(topic: str, message: Dict[str, Any],
 # Message handler for incoming Kafka messages from user-events topic
 @broker.subscriber("user-events", group_id=settings.GROUP_ID)
 async def handle_user_message(message: dict):
-    """Handle incoming messages from the user-events topic."""
+    """
+    Handle incoming messages from the user-events topic.
+
+    * NOTE * the decorator handles connecting to kafka and subscribing to the topic.
+    Any polling going on is there. The real work is just decorating this handler that way.
+    The rest of what's going on here is useful to this application; what handling
+    the message means to this app.
+
+    :param message: The message payload received from Kafka.
+    :return: None. Processes and stores messages in the in-memory buffer.
+    """
     global message_buffer
 
     try:
@@ -137,7 +149,17 @@ async def handle_user_message(message: dict):
 # Message handler for incoming Kafka messages from system-alerts topic
 @broker.subscriber("system-alerts", group_id=settings.GROUP_ID)
 async def handle_system_alert(message: dict):
-    """Handle incoming messages from the system-alerts topic."""
+    """
+    Handle incoming messages from the system-alerts topic.
+
+    * NOTE * the decorator handles connecting to kafka and subscribing to the topic.
+    Any polling going on is there. The real work is just decorating this handler that way.
+    The rest of what's going on here is useful to this application; what handling
+    the message means to this app.
+
+    :param message: The alert message payload received from Kafka.
+    :return: None. Processes and stores alert messages in the in-memory buffer.
+    """
     global message_buffer
 
     try:

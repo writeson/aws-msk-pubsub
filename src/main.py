@@ -43,7 +43,11 @@ system_alerts_background_task = None
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
-    """Initialize components on application startup."""
+    """
+    Initialize components on application startup.
+
+    :return: None. Starts Kafka broker and schedules the background system alerts task.
+    """
     global system_alerts_background_task
     
     logger.info("Starting FastAPI MSK pub/sub application with faststream...")
@@ -58,7 +62,11 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Clean up resources on application shutdown."""
+    """
+    Clean up resources on application shutdown.
+
+    :return: None. Cancels background tasks and stops the Kafka broker gracefully.
+    """
     global system_alerts_background_task
     
     logger.info("Shutting down FastAPI MSK pub/sub application...")

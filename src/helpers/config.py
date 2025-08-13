@@ -30,7 +30,11 @@ class Settings:
     MAX_BUFFER_SIZE: int = int(os.getenv('MAX_BUFFER_SIZE', 1000))
 
     def __post_init__(self):
-        """Post-initialization to handle complex field assignments."""
+        """
+        Post-initialization to handle complex field assignments.
+
+        :return: None. Parses environment variables and sets derived fields.
+        """
         # Parse topics from environment variable
         topics_env = os.getenv('KAFKA_TOPICS', 'user-events,system-alerts')
         self.TOPICS = [topic.strip() for topic in topics_env.split(',')]
