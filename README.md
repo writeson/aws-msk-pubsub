@@ -23,10 +23,9 @@ Key components:
 - Pydantic models: src/api/models.py
 - Kafka integration: src/helpers/broker.py (faststream KafkaBroker)
 - Configuration: src/helpers/config.py
-- Optional low-level MSK client example: src/helpers/msk.py
 
 ## Prerequisites
-- Python 3.11+ (project requires >=3.13 according to pyproject; 3.11+ recommended)
+- Python 3.13+
 - Docker and Docker Compose (for local Kafka)
 - Node.js + AWS CDK v2 (for AWS deployment) and AWS CLI configured
 - kubectl configured for your EKS cluster (for deployment testing)
@@ -57,7 +56,7 @@ You can run the full stack locally with Docker Compose for Kafka and your local 
 - pip install -U pip
 
 Install runtime dependencies (from pyproject.toml):
-- pip install fastapi uvicorn faststream[kafka] kafka-python-ng boto3
+- pip install -e .
 
 3) Run the FastAPI service
 From the repository root (ensures src/ is importable):
@@ -109,19 +108,8 @@ Option A) CDK directly
 2) Deploy
 - cdk deploy
 
-Option B) Helper script (example end-to-end flow)
-A comprehensive example script exists at something/deploy_script.sh that automates:
-- prerequisites checks
-- building and pushing a container image
-- updating Kubernetes manifests
-- deploying to EKS
-- smoke testing the deployment
-Run with:
-- bash something/deploy_script.sh all
-Use the script’s help for more granular steps:
-- bash something/deploy_script.sh
 
-After deployment, configure the FastAPI application’s environment variables in your Kubernetes manifests or Helm chart. Point KAFKA_BOOTSTRAP_SERVERS to the MSK TLS brokers or set MSK_CLUSTER_NAME and allow the app to resolve brokers accordingly if you extend the code to use src/helpers/msk.py in cluster mode.
+After deployment, configure the FastAPI application’s environment variables in your Kubernetes manifests or Helm chart. Point KAFKA_BOOTSTRAP_SERVERS to the MSK TLS brokers exposed by your MSK cluster.
 
 ## Configuration and Topics
 Default topics are user-events and system-alerts (configurable via KAFKA_TOPICS). The app:
